@@ -287,7 +287,7 @@ const faqs = [
   },
   {
     q: "How long does the whole process take?",
-    a: "The quote takes about 60 seconds. Most clients are on the phone with a licensed advisor the same day, and many policies can be issued within a week.",
+    a: "The quote takes about 60 seconds. A licensed advisor calls you the same day during our calling hours — Monday to Saturday, 9 AM to 9 PM ET — or first thing the next morning if you finish after hours. From there, many policies can be issued within a week.",
   },
   {
     q: "Is my information safe?",
@@ -298,6 +298,10 @@ const faqs = [
 // Results-page FAQ — focused on objection handling for the call,
 // rather than the general FAQ on the lead page.
 const resultsFaqs = [
+  {
+    q: "When will you call me?",
+    a: "Our advisors call Monday to Saturday, 9 AM to 9 PM ET. If you finished your quote during those hours, expect a call within 15 to 60 minutes. If it's after hours or a Sunday, you're first in line when we open — we'll reach out first thing the next morning.",
+  },
   {
     q: "How does the call actually work?",
     a: "It's a low-pressure conversation. We review the policies that fit, answer your questions, and only move forward if it's clearly the right call for you. Most clients say it feels more like getting advice than getting sold.",
@@ -547,6 +551,88 @@ const carriers = [
   "Oneday Insurance",
 ];
 
+/* ---------- advisor contact window ----------
+   Calling hours: Mon–Sat, 9 AM–9 PM ET. Closed Sundays.
+   Evaluated in America/Toronto so the confirmation message is correct no
+   matter where the visitor is or what their device clock is set to.
+   This is what stops a midnight lead from being told "we'll call you in
+   a few hours" — instead they get an honest "first thing in the morning". */
+type ContactWindow = {
+  open: boolean;
+  eyebrow: string;
+  headLead: string;
+  headEm: string;
+  body: string;
+  badges: string[];
+  reassureEm: string;
+  reassureBody: string;
+};
+
+function getContactWindow(): ContactWindow {
+  let weekday = "Mon";
+  let hour = 12;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Toronto",
+      weekday: "short",
+      hour: "numeric",
+      hour12: false,
+    }).formatToParts(new Date());
+    weekday = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+    const raw = parseInt(
+      parts.find((p) => p.type === "hour")?.value ?? "12",
+      10
+    );
+    hour = raw === 24 ? 0 : raw; // some engines report midnight as hour 24
+  } catch {
+    // If Intl/timezone data is unavailable, fall through with the safe
+    // mid-day defaults so the visitor always gets a clear next step.
+  }
+
+  const dayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
+    weekday
+  );
+  const isWorkingDay = dayIndex >= 1 && dayIndex <= 6; // Mon–Sat
+  const isOpen = isWorkingDay && hour >= 9 && hour < 21;
+
+  if (isOpen) {
+    return {
+      open: true,
+      eyebrow: "What happens next",
+      headLead: "Sit tight",
+      headEm: "We'll call you shortly.",
+      body: "A licensed advisor will call you within the next 15–60 minutes to walk you through your match and answer any questions. No pressure, no obligation — just a real conversation.",
+      badges: ["Call within the hour", "Licensed advisor", "No pressure"],
+      reassureEm: "Keep your phone close.",
+      reassureBody:
+        "A licensed advisor will call within the hour to walk through your options.",
+    };
+  }
+
+  // Closed right now — work out, in plain language, when we next open.
+  let when: string;
+  if (isWorkingDay && hour < 9) {
+    when = "first thing this morning";
+  } else if (dayIndex === 6) {
+    // Saturday after 9 PM → closed Sunday → next opening is Monday
+    when = "first thing Monday morning";
+  } else {
+    // Mon–Fri after 9 PM, or any time Sunday → next day opens at 9 AM
+    when = "first thing tomorrow morning";
+  }
+
+  return {
+    open: false,
+    eyebrow: "We've got your request",
+    headLead: "Good news",
+    headEm: "You may qualify.",
+    body: `Based on your answers, it looks like you could qualify for several strong coverage options. A licensed advisor will call you ${when} — we're open Monday–Saturday, 9 AM–9 PM ET — to walk through your match and answer your questions. No pressure, no obligation.`,
+    badges: ["Request received", "Licensed advisor", "No pressure"],
+    reassureEm: "Talk soon.",
+    reassureBody: `Keep an eye on your phone — a licensed advisor will call you ${when} to walk through your options.`,
+  };
+}
+
 export default function Home() {
   const [stage, setStage] = useState<
     "lead" | "survey" | "phone_gate" | "results"
@@ -573,6 +659,15 @@ export default function Home() {
     null
   );
   const [logoOk, setLogoOk] = useState(true);
+
+  // Confirmation copy adapts to whether an advisor can realistically call
+  // now or first thing in the morning. Captured fresh at submit time
+  // (see submitPhoneGate) so it never shifts under the visitor.
+  const [contactWindow, setContactWindow] = useState(getContactWindow);
+
+  // Optional "book a call now" link. Set NEXT_PUBLIC_BOOKING_URL to your
+  // GHL calendar / Calendly URL — until then the button stays hidden.
+  const bookingUrl = process.env.NEXT_PUBLIC_BOOKING_URL;
 
   // JS-driven marquee — guaranteed to scroll regardless of CSS keyframe state
   // or prefers-reduced-motion. Speed: full loop in ~45s.
@@ -688,6 +783,8 @@ export default function Home() {
       answers: normalizedAnswers,
       recommended_product: recommendedProductName,
     });
+    // Re-evaluate the calling window at the exact moment of submission.
+    setContactWindow(getContactWindow());
     setLoading(false);
     setStage("results");
   };
@@ -2185,17 +2282,17 @@ export default function Home() {
                     className="text-[11px] uppercase tracking-[0.22em]"
                     style={{ color: GREEN }}
                   >
-                    What happens next
+                    {contactWindow.eyebrow}
                   </div>
 
                   <h3
                     className={`${heading.className} mt-3 text-4xl leading-[1.04] md:text-6xl`}
                     style={{ color: INK, letterSpacing: "-0.01em" }}
                   >
-                    Sit tight{lead.firstName ? `, ${lead.firstName}` : ""}
-                    .{" "}
+                    {contactWindow.headLead}
+                    {lead.firstName ? `, ${lead.firstName}` : ""}.{" "}
                     <em className={`${heading.className} italic`}>
-                      We&apos;ll call you.
+                      {contactWindow.headEm}
                     </em>
                   </h3>
 
@@ -2203,31 +2300,50 @@ export default function Home() {
                     className="mx-auto mt-5 max-w-xl text-base leading-relaxed md:text-lg"
                     style={{ color: "rgba(31,51,41,0.70)" }}
                   >
-                    A licensed advisor will reach out{" "}
-                    <strong style={{ color: INK }}>
-                      today, usually within a few hours
-                    </strong>
-                    , to walk you through your match and lock in your coverage.
-                    No pressure, no obligation — just a real conversation.
+                    {contactWindow.body}
                   </p>
 
                   <div
                     className="mx-auto mt-8 flex max-w-md flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm"
                     style={{ color: "rgba(31,51,41,0.65)" }}
                   >
-                    <span className="inline-flex items-center gap-2">
-                      <Check />
-                      Same-day call
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <Check />
-                      Licensed advisor
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <Check />
-                      No pressure
-                    </span>
+                    {contactWindow.badges.map((badge) => (
+                      <span
+                        key={badge}
+                        className="inline-flex items-center gap-2"
+                      >
+                        <Check />
+                        {badge}
+                      </span>
+                    ))}
                   </div>
+
+                  {/* Instant-booking option — only shows once
+                      NEXT_PUBLIC_BOOKING_URL is set. */}
+                  {bookingUrl ? (
+                    <div
+                      className="mx-auto mt-9 max-w-md border-t pt-7"
+                      style={{ borderColor: "rgba(31,51,41,0.08)" }}
+                    >
+                      <p
+                        className="text-sm"
+                        style={{ color: "rgba(31,51,41,0.65)" }}
+                      >
+                        {contactWindow.open
+                          ? "Prefer to pick an exact time?"
+                          : "Don't want to wait? Lock in a time that works for you."}
+                      </p>
+                      <a
+                        href={bookingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex items-center justify-center rounded-full px-7 py-3.5 text-sm font-semibold transition hover:opacity-90"
+                        style={{ background: GREEN, color: CREAM }}
+                      >
+                        Book your call now
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -2312,22 +2428,21 @@ export default function Home() {
                 </div>
               </section>
 
-              {/* Reassurance line — no booking button needed, the advisor calls */}
+              {/* Reassurance line — copy matches the advisor calling window */}
               <div className="mt-14 text-center md:mt-20">
                 <p
                   className={`${heading.className} text-xl leading-snug md:text-2xl`}
                   style={{ color: INK }}
                 >
                   <em className={`${heading.className} italic`}>
-                    We&apos;ll be in touch today.
+                    {contactWindow.reassureEm}
                   </em>
                 </p>
                 <p
                   className="mx-auto mt-3 max-w-md text-sm"
                   style={{ color: "rgba(31,51,41,0.55)" }}
                 >
-                  Keep an eye on your phone. A licensed advisor will reach out
-                  shortly to walk through your options.
+                  {contactWindow.reassureBody}
                 </p>
               </div>
             </section>
