@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Inter, Instrument_Serif } from "next/font/google";
 
+// ── Meta Pixel Event Tracking ──────────────────────────────────────────
+const trackPixelEvent = (eventName: string, eventData?: Record<string, any>) => {
+  if (typeof window !== "undefined" && (window as any).fbq) {
+    (window as any).fbq("track", eventName, eventData || {});
+  }
+};
+
 const heading = Instrument_Serif({
   subsets: ["latin"],
   weight: ["400"],
@@ -753,6 +760,16 @@ export default function Home() {
       firstName: lead.firstName.trim(),
       email: lead.email.trim(),
     });
+
+    // ── Meta Pixel: ViewContent ───────────────────────────────────────────
+    // User has entered the survey — they're interested
+    trackPixelEvent("ViewContent", {
+      content_name: "survey_started",
+      content_type: "product",
+      value: 0,
+      currency: "CAD",
+    });
+
     setLoading(false);
     setStage("survey");
   };
@@ -783,6 +800,17 @@ export default function Home() {
       answers: normalizedAnswers,
       recommended_product: recommendedProductName,
     });
+
+    // ── Meta Pixel: Lead ──────────────────────────────────────────────────
+    // User has completed the survey with phone — this is a qualified lead
+    trackPixelEvent("Lead", {
+      content_name: "insurance_lead",
+      content_category: "life_insurance",
+      value: 1,
+      currency: "CAD",
+      predicted_product: recommendedProductName,
+    });
+
     // Re-evaluate the calling window at the exact moment of submission.
     setContactWindow(getContactWindow());
     setLoading(false);
