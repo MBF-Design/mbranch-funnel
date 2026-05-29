@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, Instrument_Serif } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 
 const inter = Inter({
@@ -36,9 +35,7 @@ export default function RootLayout({
     >
       <head>
         {/* Meta Pixel Base Code */}
-        <Script
-          id="meta-pixel"
-          strategy="afterInteractive"
+        <script
           dangerouslySetInnerHTML={{
             __html: `
               !function(f,b,e,v,n,t,s)
